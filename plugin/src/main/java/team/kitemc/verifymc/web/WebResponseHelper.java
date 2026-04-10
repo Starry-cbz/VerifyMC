@@ -24,17 +24,23 @@ public final class WebResponseHelper {
      */
     public static JSONObject readJson(HttpExchange exchange) throws IOException, JSONException {
         try (InputStream is = exchange.getRequestBody();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+             InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
             StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line);
+            char[] buffer = new char[8192];
+            int read;
+            int totalRead = 0;
+            while ((read = reader.read(buffer)) != -1) {
+                sb.append(buffer, 0, read);
+                totalRead += read;
+                if (totalRead > 1024 * 1024) { // 1MB limit
+                    throw new IOException("Request body too large");
+                }
             }
             String body = sb.toString().trim();
             if (body.isEmpty()) {
                 return new JSONObject();
             }
-            return new JSONObject(body);  // Let JSONException propagate to caller
+            return new JSONObject(body);
         }
     }
 

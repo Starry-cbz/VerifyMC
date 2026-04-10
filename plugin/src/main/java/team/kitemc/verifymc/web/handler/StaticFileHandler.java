@@ -90,10 +90,9 @@ public class StaticFileHandler implements HttpHandler {
         String contentType = determineContentType(file.getName());
         exchange.getResponseHeaders().set("Content-Type", contentType);
 
-        byte[] data = Files.readAllBytes(file.toPath());
-        exchange.sendResponseHeaders(200, data.length);
+        exchange.sendResponseHeaders(200, file.length());
         try (OutputStream os = exchange.getResponseBody()) {
-            os.write(data);
+            Files.copy(file.toPath(), os);
         }
     }
 

@@ -15,6 +15,7 @@ public class FileUserDao implements UserDao {
     private final org.bukkit.plugin.Plugin plugin;
     private volatile boolean dirty = false;
     private volatile boolean running = true;
+    private volatile List<Map<String, Object>> sortedUsersCache = null;
 
     public FileUserDao(File dataFile, org.bukkit.plugin.Plugin plugin) {
         this.plugin = plugin;
@@ -60,6 +61,28 @@ public class FileUserDao implements UserDao {
      */
     private void saveLater() {
         dirty = true;
+        sortedUsersCache = null;
+    }
+
+    private List<Map<String, Object>> getSortedUsers() {
+        List<Map<String, Object>> cached = sortedUsersCache;
+        if (cached == null) {
+            synchronized (this) {
+                cached = sortedUsersCache;
+                if (cached == null) {
+                    cached = new ArrayList<>(users.values());
+                    cached.sort((a, b) -> {
+                        Long timeA = getRegTimeAsLong(a.get("regTime"));
+                        Long timeB = getRegTimeAsLong(b.get("regTime"));
+                        if (timeA == null) timeA = 0L;
+                        if (timeB == null) timeB = 0L;
+                        return timeB.compareTo(timeA);
+                    });
+                    sortedUsersCache = cached;
+                }
+            }
+        }
+        return cached;
     }
 
     private void debugLog(String msg) {
@@ -437,15 +460,7 @@ public class FileUserDao implements UserDao {
     @Override
     public List<Map<String, Object>> getUsersWithPagination(int page, int pageSize) {
         debugLog("Getting users with pagination: page=" + page + ", pageSize=" + pageSize);
-        List<Map<String, Object>> allUsers = new ArrayList<>(users.values());
-
-        allUsers.sort((a, b) -> {
-            Long timeA = getRegTimeAsLong(a.get("regTime"));
-            Long timeB = getRegTimeAsLong(b.get("regTime"));
-            if (timeA == null) timeA = 0L;
-            if (timeB == null) timeB = 0L;
-            return timeB.compareTo(timeA);
-        });
+        List<Map<String, Object>> allUsers = getSortedUsers();
 
         int startIndex = (page - 1) * pageSize;
         int endIndex = Math.min(startIndex + pageSize, allUsers.size());
@@ -473,7 +488,7 @@ public class FileUserDao implements UserDao {
         List<Map<String, Object>> filteredUsers = new ArrayList<>();
 
         String query = searchQuery != null ? searchQuery.toLowerCase().trim() : "";
-        for (Map<String, Object> user : users.values()) {
+        for (Map<String, Object> user : getSortedUsers()) {
             if (query.isEmpty()) {
                 filteredUsers.add(user);
             } else {
@@ -484,14 +499,6 @@ public class FileUserDao implements UserDao {
                 }
             }
         }
-
-        filteredUsers.sort((a, b) -> {
-            Long timeA = getRegTimeAsLong(a.get("regTime"));
-            Long timeB = getRegTimeAsLong(b.get("regTime"));
-            if (timeA == null) timeA = 0L;
-            if (timeB == null) timeB = 0L;
-            return timeB.compareTo(timeA);
-        });
 
         int startIndex = (page - 1) * pageSize;
         int endIndex = Math.min(startIndex + pageSize, filteredUsers.size());
@@ -572,20 +579,12 @@ public class FileUserDao implements UserDao {
         debugLog("Getting approved users with pagination: page=" + page + ", pageSize=" + pageSize);
         List<Map<String, Object>> approvedUsers = new ArrayList<>();
 
-        for (Map<String, Object> user : users.values()) {
+        for (Map<String, Object> user : getSortedUsers()) {
             String status = user.get("status") != null ? user.get("status").toString() : "";
             if (!"pending".equalsIgnoreCase(status)) {
                 approvedUsers.add(user);
             }
         }
-
-        approvedUsers.sort((a, b) -> {
-            Long timeA = getRegTimeAsLong(a.get("regTime"));
-            Long timeB = getRegTimeAsLong(b.get("regTime"));
-            if (timeA == null) timeA = 0L;
-            if (timeB == null) timeB = 0L;
-            return timeB.compareTo(timeA);
-        });
 
         int startIndex = (page - 1) * pageSize;
         int endIndex = Math.min(startIndex + pageSize, approvedUsers.size());
@@ -606,7 +605,7 @@ public class FileUserDao implements UserDao {
         List<Map<String, Object>> filteredUsers = new ArrayList<>();
 
         String query = searchQuery != null ? searchQuery.toLowerCase().trim() : "";
-        for (Map<String, Object> user : users.values()) {
+        for (Map<String, Object> user : getSortedUsers()) {
             String status = user.get("status") != null ? user.get("status").toString() : "";
             if (!"pending".equalsIgnoreCase(status)) {
                 if (query.isEmpty()) {
@@ -620,14 +619,6 @@ public class FileUserDao implements UserDao {
                 }
             }
         }
-
-        filteredUsers.sort((a, b) -> {
-            Long timeA = getRegTimeAsLong(a.get("regTime"));
-            Long timeB = getRegTimeAsLong(b.get("regTime"));
-            if (timeA == null) timeA = 0L;
-            if (timeB == null) timeB = 0L;
-            return timeB.compareTo(timeA);
-        });
 
         int startIndex = (page - 1) * pageSize;
         int endIndex = Math.min(startIndex + pageSize, filteredUsers.size());

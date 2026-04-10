@@ -44,6 +44,7 @@ public class RegistrationProcessingHandler implements HttpHandler {
     private final BiFunction<String, String, String> usernameNormalizer;
     private final Function<String, Boolean> emailValidator;
     private final Consumer<String> debugLogger;
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object> emailLocks = new java.util.concurrent.ConcurrentHashMap<>();
 
     public RegistrationProcessingHandler(
             Plugin plugin,
@@ -104,31 +105,38 @@ public class RegistrationProcessingHandler implements HttpHandler {
         }
         RegistrationRequest request = RegistrationRequest.fromJson(req, usernameNormalizer);
 
-        RegistrationValidationResult basicResult = validateBasicInput(request, requestId);
-        if (!basicResult.passed()) {
-            reject(exchange, basicResult, request.language());
-            return;
-        }
+        Object emailLock = emailLocks.computeIfAbsent(request.email().toLowerCase(), k -> new Object());
+        synchronized (emailLock) {
+            try {
+                RegistrationValidationResult basicResult = validateBasicInput(request, requestId);
+                if (!basicResult.passed()) {
+                    reject(exchange, basicResult, request.language());
+                    return;
+                }
 
-        QuestionnaireSubmissionRecord questionnaireSubmissionRecord = validateQuestionnaireSubmission(exchange, request, requestId);
-        if (questionnaireSubmissionRecord == null && questionnaireService.isEnabled()) {
-            return;
-        }
+                QuestionnaireSubmissionRecord questionnaireSubmissionRecord = validateQuestionnaireSubmission(exchange, request, requestId);
+                if (questionnaireSubmissionRecord == null && questionnaireService.isEnabled()) {
+                    return;
+                }
 
-        RegistrationValidationResult verificationResult = validateVerificationMethod(request, requestId);
-        if (!verificationResult.passed()) {
-            reject(exchange, verificationResult, request.language());
-            return;
-        }
+                RegistrationValidationResult verificationResult = validateVerificationMethod(request, requestId);
+                if (!verificationResult.passed()) {
+                    reject(exchange, verificationResult, request.language());
+                    return;
+                }
 
-        RegistrationValidationResult discordResult = validateDiscordRequirement(request, requestId);
-        if (!discordResult.passed()) {
-            reject(exchange, discordResult, request.language());
-            return;
-        }
+                RegistrationValidationResult discordResult = validateDiscordRequirement(request, requestId);
+                if (!discordResult.passed()) {
+                    reject(exchange, discordResult, request.language());
+                    return;
+                }
 
-        JSONObject response = executeRegistration(request, questionnaireSubmissionRecord, requestId);
-        WebResponseHelper.sendJson(exchange, response);
+                JSONObject response = executeRegistration(request, questionnaireSubmissionRecord, requestId);
+                WebResponseHelper.sendJson(exchange, response);
+            } finally {
+                emailLocks.remove(request.email().toLowerCase(), emailLock);
+            }
+        }
     }
 
     private RegistrationValidationResult validateBasicInput(RegistrationRequest request, String requestId) {

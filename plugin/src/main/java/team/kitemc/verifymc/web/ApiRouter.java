@@ -22,6 +22,25 @@ public class ApiRouter {
     public ApiRouter(PluginContext ctx) {
         this.ctx = ctx;
         this.questionnaireSubmissionStore = new ConcurrentHashMap<>();
+        startQuestionnaireCleanupTask();
+    }
+
+    private void startQuestionnaireCleanupTask() {
+        Thread cleanupThread = new Thread(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    Thread.sleep(60000); // 1 minute
+                    long now = System.currentTimeMillis();
+                    questionnaireSubmissionStore.entrySet().removeIf(entry -> entry.getValue().expiresAt() < now);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
+        cleanupThread.setDaemon(true);
+        cleanupThread.setName("VerifyMC-QuestionnaireCleanup");
+        cleanupThread.start();
     }
 
     /**

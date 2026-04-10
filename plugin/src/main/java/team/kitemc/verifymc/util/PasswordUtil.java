@@ -20,9 +20,6 @@ public final class PasswordUtil {
         if (plainPassword == null || plainPassword.isEmpty()) {
             throw new IllegalArgumentException("Password cannot be null or empty");
         }
-        if (isHashed(plainPassword)) {
-            return plainPassword;
-        }
         String salt = generateHexSalt();
         String hash = sha256Hex(sha256Hex(plainPassword) + salt);
         return HASH_PREFIX + salt + DELIMITER + hash;

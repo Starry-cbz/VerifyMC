@@ -43,6 +43,12 @@ public class LoginHandler implements HttpHandler {
 
     private boolean isRateLimited(String ip) {
         long now = System.currentTimeMillis();
+        
+        // Prevent memory leak
+        if (loginAttempts.size() > 1000) {
+            loginAttempts.entrySet().removeIf(entry -> (now - entry.getValue().windowStart) > RATE_LIMIT_WINDOW_MS);
+        }
+
         LoginAttempt attempt = loginAttempts.compute(ip, (k, v) -> {
             if (v == null || (now - v.windowStart) > RATE_LIMIT_WINDOW_MS) {
                 LoginAttempt fresh = new LoginAttempt();
