@@ -1,5 +1,7 @@
 package team.kitemc.verifymc.db;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.plugin.Plugin;
 import java.sql.*;
 import java.util.ArrayList;
@@ -8,11 +10,13 @@ import java.util.Properties;
 import java.util.logging.Level;
 
 public class MysqlAuditDao implements AuditDao, AutoCloseable {
-    private final Connection conn;
+    private final HikariDataSource dataSource;
     private final Plugin plugin;
 
     public MysqlAuditDao(Properties mysqlConfig, Plugin plugin) throws SQLException {
         this.plugin = plugin;
+        
+        HikariConfig config = new HikariConfig();
         String useSSL = mysqlConfig.getProperty("useSSL", "true");
         String allowPublicKeyRetrieval = mysqlConfig.getProperty("allowPublicKeyRetrieval", "false");
         String url = "jdbc:mysql://" + mysqlConfig.getProperty("host") + ":" +
@@ -20,9 +24,18 @@ public class MysqlAuditDao implements AuditDao, AutoCloseable {
                 mysqlConfig.getProperty("database") +
                 "?useSSL=" + useSSL +
                 "&allowPublicKeyRetrieval=" + allowPublicKeyRetrieval +
-                "&characterEncoding=utf8";
-        conn = DriverManager.getConnection(url, mysqlConfig.getProperty("user"), mysqlConfig.getProperty("password"));
-        try (Statement stmt = conn.createStatement()) {
+                "&characterEncoding=utf8&autoReconnect=true";
+                
+        config.setJdbcUrl(url);
+        config.setUsername(mysqlConfig.getProperty("user"));
+        config.setPassword(mysqlConfig.getProperty("password"));
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setConnectionTimeout(30000);
+        
+        this.dataSource = new HikariDataSource(config);
+        
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.executeUpdate("CREATE TABLE IF NOT EXISTS audits (" +
                     "id INT AUTO_INCREMENT PRIMARY KEY," +
                     "action VARCHAR(32)," +
@@ -36,7 +49,7 @@ public class MysqlAuditDao implements AuditDao, AutoCloseable {
     @Override
     public void addAudit(AuditRecord audit) {
         String sql = "INSERT INTO audits (action, operator, target, detail, timestamp) VALUES (?, ?, ?, ?, ?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = dataSource.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, audit.action());
             ps.setString(2, audit.operator());
             ps.setString(3, audit.target());
@@ -52,7 +65,7 @@ public class MysqlAuditDao implements AuditDao, AutoCloseable {
     public List<AuditRecord> getAllAudits() {
         List<AuditRecord> result = new ArrayList<>();
         String sql = "SELECT * FROM audits";
-        try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 result.add(new AuditRecord(
                         rs.getLong("id"),
@@ -76,10 +89,8 @@ public class MysqlAuditDao implements AuditDao, AutoCloseable {
 
     @Override
     public void close() {
-        if (conn != null) {
-            try {
-                conn.close();
-            } catch (SQLException ignored) {}
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
         }
     }
 }

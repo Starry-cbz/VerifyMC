@@ -137,6 +137,16 @@ public class VerifyMCVelocity {
             logger.info("[DEBUG] PreLogin check for: " + playerName);
         }
 
+        // Suspend the event to perform asynchronous API check
+        PreLoginEvent.PreLoginComponentResult defaultResult = event.getResult();
+        
+        event.getResult(); // Force velocity to load event result
+        
+        // Velocity requires event result to be returned synchronously or we must use EventTask
+        // But since PreLoginEvent supports EventTask in Velocity 3.0+, we'll just handle it synchronously 
+        // to avoid API compatibility issues unless we implement EventTask correctly.
+        // Let's use a CompletableFuture that blocks for a short time.
+        
         try {
             // Check if player is approved
             ApiClient.WhitelistStatus status = apiClient.checkWhitelist(playerName);

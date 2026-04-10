@@ -1,5 +1,7 @@
 package team.kitemc.verifymc.web.handler;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.json.JSONException;
@@ -16,7 +18,8 @@ import team.kitemc.verifymc.web.WebResponseHelper;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class LoginHandler implements HttpHandler {
@@ -25,15 +28,15 @@ public class LoginHandler implements HttpHandler {
 
     private final PluginContext ctx;
     private final boolean isAdminLogin;
-    private final ConcurrentHashMap<String, LoginAttempt> loginAttempts = new ConcurrentHashMap<>();
-
-    private static class LoginAttempt {
-        final AtomicInteger count = new AtomicInteger(0);
-        volatile long windowStart = System.currentTimeMillis();
-    }
+    
+    private final Cache<String, AtomicInteger> loginAttempts = CacheBuilder.newBuilder()
+            .expireAfterWrite(RATE_LIMIT_WINDOW_MS, TimeUnit.MILLISECONDS)
+            .maximumSize(10000)
+            .build();
 
     public LoginHandler(PluginContext ctx) {
-        this(ctx, false);
+        this.ctx = ctx;
+        this.isAdminLogin = false;
     }
 
     public LoginHandler(PluginContext ctx, boolean isAdminLogin) {
@@ -42,31 +45,31 @@ public class LoginHandler implements HttpHandler {
     }
 
     private boolean isRateLimited(String ip) {
-        long now = System.currentTimeMillis();
-        
-        // Prevent memory leak
-        if (loginAttempts.size() > 1000) {
-            loginAttempts.entrySet().removeIf(entry -> (now - entry.getValue().windowStart) > RATE_LIMIT_WINDOW_MS);
+        try {
+            AtomicInteger attempts = loginAttempts.get(ip, AtomicInteger::new);
+            return attempts.incrementAndGet() > MAX_ATTEMPTS_PER_IP;
+        } catch (ExecutionException e) {
+            return false;
         }
+    }
 
-        LoginAttempt attempt = loginAttempts.compute(ip, (k, v) -> {
-            if (v == null || (now - v.windowStart) > RATE_LIMIT_WINDOW_MS) {
-                LoginAttempt fresh = new LoginAttempt();
-                fresh.windowStart = now;
-                fresh.count.set(1);
-                return fresh;
-            }
-            v.count.incrementAndGet();
-            return v;
-        });
-        return attempt.count.get() > MAX_ATTEMPTS_PER_IP;
+    private String getClientIp(HttpExchange exchange) {
+        String forwardedFor = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
+        if (forwardedFor != null && !forwardedFor.isEmpty()) {
+            return forwardedFor.split(",")[0].trim();
+        }
+        String realIp = exchange.getRequestHeaders().getFirst("X-Real-IP");
+        if (realIp != null && !realIp.isEmpty()) {
+            return realIp.trim();
+        }
+        return exchange.getRemoteAddress().getAddress().getHostAddress();
     }
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         if (!WebResponseHelper.requireMethod(exchange, "POST")) return;
 
-        String clientIp = exchange.getRemoteAddress().getAddress().getHostAddress();
+        String clientIp = getClientIp(exchange);
         if (isRateLimited(clientIp)) {
             ctx.getPlugin().getLogger().warning("[Security] Login rate limit exceeded for IP: " + clientIp);
             WebResponseHelper.sendJson(exchange, ApiResponseFactory.failure(

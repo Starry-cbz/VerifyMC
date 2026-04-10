@@ -115,9 +115,12 @@ public class MysqlUserDao implements UserDao, AutoCloseable {
     }
 
     private void ensureIndex(Statement stmt, String indexName, String createIndexSql) throws SQLException {
-        try (ResultSet rs = stmt.executeQuery("SHOW INDEX FROM users WHERE Key_name = '" + indexName + "'")) {
-            if (!rs.next()) {
-                stmt.executeUpdate(createIndexSql);
+        try (PreparedStatement ps = stmt.getConnection().prepareStatement("SHOW INDEX FROM users WHERE Key_name = ?")) {
+            ps.setString(1, indexName);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    stmt.executeUpdate(createIndexSql);
+                }
             }
         }
     }
@@ -270,7 +273,76 @@ public class MysqlUserDao implements UserDao, AutoCloseable {
     }
 
     @Override
-    public List<Map<String, Object>> getPendingUsers() {
+    public List<Map<String, Object>> getUsersByStatus(String status, int page, int size, String search) {
+        if (page < 1 || size <= 0) {
+            return java.util.Collections.emptyList();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        int offset = (page - 1) * size;
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
+
+        String sql;
+        if (normalizedSearch.isEmpty()) {
+            sql = "SELECT * FROM users WHERE status=? ORDER BY regTime DESC LIMIT ? OFFSET ?";
+        } else {
+            sql = "SELECT * FROM users WHERE status=? AND (LOWER(username) LIKE ? OR LOWER(email) LIKE ?) ORDER BY regTime DESC LIMIT ? OFFSET ?";
+        }
+
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, status);
+            if (normalizedSearch.isEmpty()) {
+                ps.setInt(2, size);
+                ps.setInt(3, offset);
+            } else {
+                String searchPattern = "%" + normalizedSearch + "%";
+                ps.setString(2, searchPattern);
+                ps.setString(3, searchPattern);
+                ps.setInt(4, size);
+                ps.setInt(5, offset);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(mapUserFromResultSet(rs));
+                }
+            }
+        } catch (SQLException e) {
+            debugLog("Error getting users by status: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @Override
+    public int getTotalUsersByStatus(String status, String search) {
+        int count = 0;
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
+
+        String sql;
+        if (normalizedSearch.isEmpty()) {
+            sql = "SELECT COUNT(*) FROM users WHERE status=?";
+        } else {
+            sql = "SELECT COUNT(*) FROM users WHERE status=? AND (LOWER(username) LIKE ? OR LOWER(email) LIKE ?)";
+        }
+
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, status);
+            if (!normalizedSearch.isEmpty()) {
+                String searchPattern = "%" + normalizedSearch + "%";
+                ps.setString(2, searchPattern);
+                ps.setString(3, searchPattern);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    count = rs.getInt(1);
+                }
+            }
+        } catch (SQLException e) {
+            debugLog("Error counting users by status: " + e.getMessage());
+        }
+        return count;
+    }
         List<Map<String, Object>> result = new ArrayList<>();
         String sql = "SELECT * FROM users WHERE status='pending'";
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
