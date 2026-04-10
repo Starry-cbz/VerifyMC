@@ -28,30 +28,6 @@ public class ReviewWebSocketServer extends WebSocketServer {
         this.authHelper = context.getWebAuthHelper();
     }
 
-    /**
-     * Compatible with old constructor (no authentication)
-     * @deprecated Use ReviewWebSocketServer(int, PluginContext) instead
-     */
-    @Deprecated
-    public ReviewWebSocketServer(int port, org.bukkit.plugin.Plugin plugin) {
-        super(new InetSocketAddress(port));
-        this.plugin = plugin;
-        this.debug = plugin != null && plugin.getConfig().getBoolean("debug", false);
-        this.authHelper = null;
-    }
-
-    /**
-     * Compatible with old constructor (no authentication)
-     * @deprecated Use ReviewWebSocketServer(int, PluginContext) instead
-     */
-    @Deprecated
-    public ReviewWebSocketServer(int port) {
-        super(new InetSocketAddress(port));
-        this.plugin = null;
-        this.debug = false;
-        this.authHelper = null;
-    }
-
     private void debugLog(String msg) {
         if (debug && plugin != null) {
             plugin.getLogger().info("[DEBUG] ReviewWebSocketServer: " + msg);

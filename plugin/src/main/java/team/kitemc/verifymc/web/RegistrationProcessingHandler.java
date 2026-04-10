@@ -134,7 +134,8 @@ public class RegistrationProcessingHandler implements HttpHandler {
                 JSONObject response = executeRegistration(request, questionnaireSubmissionRecord, requestId);
                 WebResponseHelper.sendJson(exchange, response);
             } finally {
-                emailLocks.remove(request.email().toLowerCase(), emailLock);
+                // Do not remove the lock from the map to prevent concurrent registration exploits
+                // emailLocks.remove(request.email().toLowerCase(), emailLock);
             }
         }
     }

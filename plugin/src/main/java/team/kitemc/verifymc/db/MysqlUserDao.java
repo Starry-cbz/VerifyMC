@@ -314,6 +314,20 @@ public class MysqlUserDao implements UserDao, AutoCloseable {
     }
 
     @Override
+    public List<Map<String, Object>> getPendingUsers() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        String sql = "SELECT * FROM users WHERE status='pending'";
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                result.add(mapUserFromResultSet(rs));
+            }
+        } catch (SQLException e) {
+            debugLog("Error getting pending users: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @Override
     public int getTotalUsersByStatus(String status, String search) {
         int count = 0;
         String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
@@ -342,17 +356,6 @@ public class MysqlUserDao implements UserDao, AutoCloseable {
             debugLog("Error counting users by status: " + e.getMessage());
         }
         return count;
-    }
-        List<Map<String, Object>> result = new ArrayList<>();
-        String sql = "SELECT * FROM users WHERE status='pending'";
-        try (Connection conn = getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
-            while (rs.next()) {
-                result.add(mapUserFromResultSet(rs));
-            }
-        } catch (SQLException e) {
-            debugLog("Error getting pending users: " + e.getMessage());
-        }
-        return result;
     }
 
     private Map<String, Object> mapUserFromResultSet(ResultSet rs) throws SQLException {

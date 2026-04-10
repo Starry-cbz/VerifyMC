@@ -55,6 +55,18 @@ public class AdminUserDeleteHandler implements HttpHandler {
             return;
         }
 
+        if (operator.equalsIgnoreCase(target)) {
+            WebResponseHelper.sendJson(exchange, ApiResponseFactory.failure(
+                    ctx.getMessage("admin.cannot_delete_self", language)));
+            return;
+        }
+
+        if (ctx.getOpsManager().isOp(target)) {
+            WebResponseHelper.sendJson(exchange, ApiResponseFactory.failure(
+                    ctx.getMessage("admin.cannot_delete_admin", language)));
+            return;
+        }
+
         boolean ok = ctx.getUserDao().deleteUser(target);
         if (ok) {
             org.bukkit.Bukkit.getScheduler().runTask(ctx.getPlugin(), () ->

@@ -137,44 +137,37 @@ public class VerifyMCVelocity {
             logger.info("[DEBUG] PreLogin check for: " + playerName);
         }
 
-        // Suspend the event to perform asynchronous API check
-        PreLoginEvent.PreLoginComponentResult defaultResult = event.getResult();
-        
-        event.getResult(); // Force velocity to load event result
-        
-        // Velocity requires event result to be returned synchronously or we must use EventTask
-        // But since PreLoginEvent supports EventTask in Velocity 3.0+, we'll just handle it synchronously 
-        // to avoid API compatibility issues unless we implement EventTask correctly.
-        // Let's use a CompletableFuture that blocks for a short time.
-        
-        try {
-            // Check if player is approved
-            ApiClient.WhitelistStatus status = apiClient.checkWhitelist(playerName);
+        // Return a future event task to suspend login until the check completes without blocking the main event thread
+        event.setResult(com.velocitypowered.api.event.EventTask.async(() -> {
+            try {
+                // Check if player is approved
+                ApiClient.WhitelistStatus status = apiClient.checkWhitelist(playerName);
 
-            if (status == null || !status.isApproved()) {
-                // Player not approved, cancel login
+                if (status == null || !status.isApproved()) {
+                    // Player not approved, cancel login
+                    String kickMessage = config.getKickMessage()
+                        .replace("{url}", config.getRegisterUrl());
+
+                    Component kickComponent = LegacyComponentSerializer.legacyAmpersand().deserialize(kickMessage);
+                    event.setResult(PreLoginEvent.PreLoginComponentResult.denied(kickComponent));
+
+                    if (config.isDebug()) {
+                        String reason = (status == null) ? "lookup failed" : "not approved";
+                        logger.info("[DEBUG] Blocked player: {} ({})", playerName, reason);
+                    }
+                } else {
+                    if (config.isDebug()) {
+                        logger.info("[DEBUG] Allowed player: " + playerName + " (status: " + status.getStatus() + ")");
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to check whitelist for " + playerName, e);
                 String kickMessage = config.getKickMessage()
                     .replace("{url}", config.getRegisterUrl());
-
                 Component kickComponent = LegacyComponentSerializer.legacyAmpersand().deserialize(kickMessage);
                 event.setResult(PreLoginEvent.PreLoginComponentResult.denied(kickComponent));
-
-                if (config.isDebug()) {
-                    String reason = (status == null) ? "lookup failed" : "not approved";
-                    logger.info("[DEBUG] Blocked player: {} ({})", playerName, reason);
-                }
-            } else {
-                if (config.isDebug()) {
-                    logger.info("[DEBUG] Allowed player: " + playerName + " (status: " + status.getStatus() + ")");
-                }
             }
-        } catch (Exception e) {
-            logger.warn("Failed to check whitelist for " + playerName, e);
-            String kickMessage = config.getKickMessage()
-                .replace("{url}", config.getRegisterUrl());
-            Component kickComponent = LegacyComponentSerializer.legacyAmpersand().deserialize(kickMessage);
-            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(kickComponent));
-        }
+        }));
     }
 
     /**

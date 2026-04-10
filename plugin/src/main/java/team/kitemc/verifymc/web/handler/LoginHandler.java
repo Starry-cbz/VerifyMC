@@ -54,13 +54,15 @@ public class LoginHandler implements HttpHandler {
     }
 
     private String getClientIp(HttpExchange exchange) {
-        String forwardedFor = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isEmpty()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        String realIp = exchange.getRequestHeaders().getFirst("X-Real-IP");
-        if (realIp != null && !realIp.isEmpty()) {
-            return realIp.trim();
+        if (ctx.getConfigManager().getPlugin().getConfig().getBoolean("trust_proxy", false)) {
+            String forwardedFor = exchange.getRequestHeaders().getFirst("X-Forwarded-For");
+            if (forwardedFor != null && !forwardedFor.isEmpty()) {
+                return forwardedFor.split(",")[0].trim();
+            }
+            String realIp = exchange.getRequestHeaders().getFirst("X-Real-IP");
+            if (realIp != null && !realIp.isEmpty()) {
+                return realIp.trim();
+            }
         }
         return exchange.getRemoteAddress().getAddress().getHostAddress();
     }

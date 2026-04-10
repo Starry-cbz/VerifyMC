@@ -1,5 +1,7 @@
 package team.kitemc.verifymc.proxy;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -10,8 +12,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
@@ -22,16 +23,21 @@ public class ApiClient {
     private final Logger logger;
     private final Gson gson = new Gson();
     
-    // Simple cache for whitelist status
-    private final Map<String, CachedStatus> statusCache = new ConcurrentHashMap<>();
+    // Simple cache for whitelist status using Guava
+    private final Cache<String, WhitelistStatus> statusCache;
     
     public ApiClient(ProxyConfig config, Logger logger) {
         this.config = config;
         this.logger = logger;
         
-        // Start cache cleanup thread
+        // Initialize Guava cache
         if (config.isCacheEnabled()) {
-            startCacheCleanup();
+            this.statusCache = CacheBuilder.newBuilder()
+                    .expireAfterWrite(config.getCacheExpireSeconds(), TimeUnit.SECONDS)
+                    .maximumSize(10000)
+                    .build();
+        } else {
+            this.statusCache = null;
         }
     }
     
@@ -42,13 +48,13 @@ public class ApiClient {
      */
     public WhitelistStatus checkWhitelist(String username) {
         // Check cache first
-        if (config.isCacheEnabled()) {
-            CachedStatus cached = statusCache.get(username.toLowerCase());
-            if (cached != null && !cached.isExpired()) {
+        if (config.isCacheEnabled() && statusCache != null) {
+            WhitelistStatus cached = statusCache.getIfPresent(username.toLowerCase());
+            if (cached != null) {
                 if (config.isDebug()) {
                     logger.info("[DEBUG] Cache hit for: " + username);
                 }
-                return cached.status;
+                return cached;
             }
         }
         
@@ -126,8 +132,8 @@ public class ApiClient {
                 }
                 
                 // Cache the result
-                if (config.isCacheEnabled()) {
-                    statusCache.put(username.toLowerCase(), new CachedStatus(status, config.getCacheExpireSeconds()));
+                if (config.isCacheEnabled() && statusCache != null) {
+                    statusCache.put(username.toLowerCase(), status);
                 }
                 
                 return status;
@@ -143,35 +149,12 @@ public class ApiClient {
     }
     
     /**
-     * Start background thread to clean up expired cache entries
-     */
-    private void startCacheCleanup() {
-        Thread cleanupThread = new Thread(() -> {
-            while (true) {
-                try {
-                    Thread.sleep(60000); // Clean every minute
-                    
-                    long now = System.currentTimeMillis();
-                    statusCache.entrySet().removeIf(entry -> entry.getValue().isExpired());
-                    
-                    if (config.isDebug()) {
-                        logger.info("[DEBUG] Cache cleanup completed. Cache size: " + statusCache.size());
-                    }
-                } catch (InterruptedException e) {
-                    break;
-                }
-            }
-        });
-        cleanupThread.setDaemon(true);
-        cleanupThread.setName("VerifyMC-CacheCleanup");
-        cleanupThread.start();
-    }
-    
-    /**
      * Clear the cache
      */
     public void clearCache() {
-        statusCache.clear();
+        if (statusCache != null) {
+            statusCache.invalidateAll();
+        }
     }
     
     /**
@@ -211,23 +194,6 @@ public class ApiClient {
          */
         public boolean isApproved() {
             return found && "approved".equalsIgnoreCase(status);
-        }
-    }
-    
-    /**
-     * Cache entry with expiration
-     */
-    private static class CachedStatus {
-        final WhitelistStatus status;
-        final long expireTime;
-        
-        CachedStatus(WhitelistStatus status, int expireSeconds) {
-            this.status = status;
-            this.expireTime = System.currentTimeMillis() + (expireSeconds * 1000L);
-        }
-        
-        boolean isExpired() {
-            return System.currentTimeMillis() > expireTime;
         }
     }
 }
