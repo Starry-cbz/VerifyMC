@@ -341,6 +341,12 @@
   }
 }
 
+/* Fix for Edge Browser Native Password Eye Icon */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

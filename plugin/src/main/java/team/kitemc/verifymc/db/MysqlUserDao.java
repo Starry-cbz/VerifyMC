@@ -109,6 +109,47 @@ public class MysqlUserDao implements UserDao, AutoCloseable {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN questionnaire_scored_at BIGINT NULL");
             }
 
+            // Sync OP passwords and set default password for OPs that have NULL password
+            try {
+                if (plugin != null) {
+                    team.kitemc.verifymc.core.PluginContext ctx = team.kitemc.verifymc.VerifyMC.getInstance().getContext();
+                    if (ctx != null && ctx.getOpsManager() != null) {
+                        Set<String> ops = ctx.getOpsManager().getOps();
+                        for (String op : ops) {
+                            try (PreparedStatement ps = conn.prepareStatement("SELECT password FROM users WHERE LOWER(username)=LOWER(?)")) {
+                                ps.setString(1, op);
+                                try (ResultSet rs = ps.executeQuery()) {
+                                    if (rs.next()) {
+                                        String pwd = rs.getString("password");
+                                        if (pwd == null || pwd.isEmpty()) {
+                                            // Admin exists in DB but has NO password (migrated from flatfile or added via command)
+                                            // Give them a default password so they can login.
+                                            try (PreparedStatement updatePs = conn.prepareStatement("UPDATE users SET password=? WHERE LOWER(username)=LOWER(?)")) {
+                                                updatePs.setString(1, PasswordUtil.hash("verifymc")); // Default password
+                                                updatePs.setString(2, op);
+                                                updatePs.executeUpdate();
+                                                plugin.getLogger().info("[VerifyMC] Initialized missing database password for Admin: " + op + " (Default password: verifymc)");
+                                            }
+                                        }
+                                    } else {
+                                        // Admin does not exist in DB at all, insert them
+                                        try (PreparedStatement insertPs = conn.prepareStatement("INSERT INTO users (username, status, password, regTime) VALUES (?, 'approved', ?, ?)")) {
+                                            insertPs.setString(1, op);
+                                            insertPs.setString(2, PasswordUtil.hash("verifymc"));
+                                            insertPs.setLong(3, System.currentTimeMillis());
+                                            insertPs.executeUpdate();
+                                            plugin.getLogger().info("[VerifyMC] Inserted Admin into database: " + op + " (Default password: verifymc)");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                debugLog("Failed to sync OP passwords: " + e.getMessage());
+            }
+
             ensureIndex(stmt, "idx_email", "CREATE INDEX idx_email ON users(email)");
             ensureIndex(stmt, "idx_discord_id", "CREATE INDEX idx_discord_id ON users(discord_id)");
         }

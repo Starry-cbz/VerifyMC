@@ -23,12 +23,12 @@
 
         <!-- 标题 -->
         <div class="fade-up-item" style="--delay: 0.2s">
-          <h1 class="text-4xl sm:text-6xl md:text-8xl font-bold mb-6 md:mb-8 tracking-tight">
-            <span class="bg-clip-text text-transparent bg-gradient-to-b from-white to-white/80">{{ displayTitle1
-            }}</span>
-            <br />
+          <h1 class="text-4xl sm:text-6xl md:text-8xl font-bold mb-6 md:mb-8 tracking-tight flex flex-col gap-2">
+            <span class="inline-block bg-clip-text text-transparent bg-gradient-to-b from-white to-white/80">
+              {{ displayTitle1 }}
+            </span>
             <span
-              class="bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-white/90 to-rose-300 font-pacifico">
+              class="inline-block bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-white/90 to-rose-300 font-pacifico mt-2">
               {{ displayTitle2 }}
             </span>
           </h1>

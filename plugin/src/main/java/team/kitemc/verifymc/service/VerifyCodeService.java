@@ -150,6 +150,14 @@ public class VerifyCodeService {
     }
 
     /**
+     * Clear rate limit for the given email (e.g. when email fails to send)
+     */
+    public void clearRateLimit(String email) {
+        rateLimitMap.remove(email);
+        debugLog("Rate limit cleared for email: " + email);
+    }
+
+    /**
      * Check verification code for given key
      * @param key Key to check
      * @param code Code to verify

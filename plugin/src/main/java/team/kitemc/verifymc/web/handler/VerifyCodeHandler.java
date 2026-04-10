@@ -61,7 +61,10 @@ public class VerifyCodeHandler implements HttpHandler {
 
         // Generate and send code
         String code = ctx.getVerifyCodeService().generateCode(email);
-        boolean sent = ctx.getMailService().sendVerifyCode(email, code, language);
+        
+        // Define subject based on language
+        String subject = "zh".equals(language) ? "VerifyMC 验证码" : "VerifyMC Verification Code";
+        boolean sent = ctx.getMailService().sendVerifyCode(email, subject, code, language);
 
         if (sent) {
             // Get remaining cooldown seconds for next send
@@ -70,6 +73,8 @@ public class VerifyCodeHandler implements HttpHandler {
             response.put("remainingSeconds", remainingSeconds);
             WebResponseHelper.sendJson(exchange, response);
         } else {
+            // Clear the rate limit so the user can try again immediately
+            ctx.getVerifyCodeService().clearRateLimit(email);
             WebResponseHelper.sendJson(exchange, ApiResponseFactory.failure(
                     ctx.getMessage("verify.send_failed", language)));
         }

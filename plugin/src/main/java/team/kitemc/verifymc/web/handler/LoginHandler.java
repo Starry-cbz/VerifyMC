@@ -130,6 +130,16 @@ public class LoginHandler implements HttpHandler {
         AuthmeService authmeService = ctx.getAuthmeService();
         boolean passwordValid = false;
 
+        // Edge case: Admins added via ingame command might have NULL password in MySQL DB
+        // when AuthMe is disabled or they are not registered in AuthMe.
+        // We must enforce them to set a password or use console to reset it instead of failing silently.
+        if (storedPassword == null && isAdminLogin) {
+            ctx.getPlugin().getLogger().warning("[Security] Admin " + actualUsername + " attempted to login but has NO password set in database. Please use '/vmc passwd " + actualUsername + " <password>' in console to set it.");
+            WebResponseHelper.sendJson(exchange, ApiResponseFactory.failure(
+                    ctx.getMessage("login.admin_password_not_set", language)));
+            return;
+        }
+
         if (authmeService != null && authmeService.isAuthmeEnabled() && authmeService.hasAuthmeUser(actualUsername)) {
             String authmePassword = authmeService.getAuthmePassword(actualUsername);
             if (authmePassword != null && !authmePassword.isEmpty()) {
