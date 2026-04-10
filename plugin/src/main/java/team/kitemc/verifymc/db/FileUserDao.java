@@ -16,6 +16,7 @@ public class FileUserDao implements UserDao {
     private volatile boolean dirty = false;
     private volatile boolean running = true;
     private volatile List<Map<String, Object>> sortedUsersCache = null;
+    private Thread flushThread;
 
     public FileUserDao(File dataFile, org.bukkit.plugin.Plugin plugin) {
         this.plugin = plugin;
@@ -39,7 +40,7 @@ public class FileUserDao implements UserDao {
     }
 
     private void startFlushThread() {
-        Thread flushThread = new Thread(() -> {
+        flushThread = new Thread(() -> {
             while (running) {
                 try {
                     Thread.sleep(5000);
@@ -203,27 +204,35 @@ public class FileUserDao implements UserDao {
         // Use temporary file for atomic write operation
         File tempFile = new File(file.getAbsolutePath() + ".tmp");
 
-        try (Writer writer = new FileWriter(tempFile)) {
-            gson.toJson(users, writer);
-            writer.flush();
+        try {
+            try (Writer writer = new FileWriter(tempFile)) {
+                gson.toJson(users, writer);
+            } // Writer is closed here, releasing the file lock
 
             // Atomic rename: tempFile -> target file
             if (!tempFile.renameTo(file)) {
-                // If rename fails (e.g., cross-filesystem), try copy and delete
-                debugLog("Atomic rename failed, falling back to copy");
-                try (java.io.InputStream in = new FileInputStream(tempFile);
-                     java.io.OutputStream out = new FileOutputStream(file)) {
-                    byte[] buffer = new byte[8192];
-                    int bytesRead;
-                    while ((bytesRead = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, bytesRead);
-                    }
+                // renameTo can fail on Windows if the target file exists, so try delete first
+                if (file.exists() && !file.delete()) {
+                    debugLog("Failed to delete existing file before rename");
                 }
-                if (!tempFile.delete()) {
-                    debugLog("Warning: failed to delete temporary file: " + tempFile.getAbsolutePath());
+                if (!tempFile.renameTo(file)) {
+                    // If rename fails (e.g., cross-filesystem), try copy and delete
+                    debugLog("Atomic rename failed, falling back to copy");
+                    try (java.io.InputStream in = new FileInputStream(tempFile);
+                         java.io.OutputStream out = new FileOutputStream(file)) {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        while ((bytesRead = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, bytesRead);
+                        }
+                    }
+                    if (!tempFile.delete()) {
+                        debugLog("Warning: failed to delete temporary file: " + tempFile.getAbsolutePath());
+                    }
                 }
             }
 
+            dirty = false;
             debugLog("Save successful");
         } catch (Exception e) {
             debugLog("Error saving users: " + e.getMessage());
@@ -676,6 +685,9 @@ public class FileUserDao implements UserDao {
     @Override
     public void close() {
         running = false;
+        if (flushThread != null) {
+            flushThread.interrupt();
+        }
         // Flush any remaining dirty data on close
         if (dirty) {
             save();

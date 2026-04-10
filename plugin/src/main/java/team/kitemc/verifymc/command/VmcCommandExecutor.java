@@ -107,25 +107,29 @@ public class VmcCommandExecutor implements CommandExecutor, TabCompleter {
             return;
         }
         String target = args[1];
-        boolean ok = ctx.getUserDao().updateUserStatus(target, "approved", sender.getName());
-        if (ok) {
-            org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist add " + target);
-            ctx.getAuditDao().addAudit(new AuditRecord("approve", sender.getName(), target, "", System.currentTimeMillis()));
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(ctx.getPlugin(), () -> {
+            boolean ok = ctx.getUserDao().updateUserStatus(target, "approved", sender.getName());
+            if (ok) {
+                org.bukkit.Bukkit.getScheduler().runTask(ctx.getPlugin(), () -> 
+                    org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist add " + target)
+                );
+                ctx.getAuditDao().addAudit(new AuditRecord("approve", sender.getName(), target, "", System.currentTimeMillis()));
 
-            // Send approval email
-            var user = ctx.getUserDao().getUserByUsername(target);
-            if (user != null) {
-                String email = (String) user.get("email");
-                if (email != null && !email.isEmpty()) {
-                    ctx.getMailService().sendReviewResult(email, target, true,
-                            "", ctx.getConfigManager().getLanguage());
+                // Send approval email
+                var user = ctx.getUserDao().getUserByUsername(target);
+                if (user != null) {
+                    String email = (String) user.get("email");
+                    if (email != null && !email.isEmpty()) {
+                        ctx.getMailService().sendReviewResult(email, target, true,
+                                "", ctx.getConfigManager().getLanguage());
+                    }
                 }
-            }
 
-            sender.sendMessage("§6[VerifyMC] §aUser " + target + " approved.");
-        } else {
-            sender.sendMessage("§6[VerifyMC] §cFailed to approve user " + target);
-        }
+                sender.sendMessage("§6[VerifyMC] §aUser " + target + " approved.");
+            } else {
+                sender.sendMessage("§6[VerifyMC] §cFailed to approve user " + target);
+            }
+        });
     }
 
     private void handleReject(CommandSender sender, String[] args) {
@@ -139,23 +143,25 @@ public class VmcCommandExecutor implements CommandExecutor, TabCompleter {
         }
         String target = args[1];
         String reason = args.length > 2 ? String.join(" ", Arrays.copyOfRange(args, 2, args.length)) : "";
-        boolean ok = ctx.getUserDao().updateUserStatus(target, "rejected", sender.getName());
-        if (ok) {
-            ctx.getAuditDao().addAudit(new AuditRecord("reject", sender.getName(), target, reason, System.currentTimeMillis()));
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(ctx.getPlugin(), () -> {
+            boolean ok = ctx.getUserDao().updateUserStatus(target, "rejected", sender.getName());
+            if (ok) {
+                ctx.getAuditDao().addAudit(new AuditRecord("reject", sender.getName(), target, reason, System.currentTimeMillis()));
 
-            var user = ctx.getUserDao().getUserByUsername(target);
-            if (user != null) {
-                String email = (String) user.get("email");
-                if (email != null && !email.isEmpty()) {
-                    ctx.getMailService().sendReviewResult(email, target, false,
-                            reason, ctx.getConfigManager().getLanguage());
+                var user = ctx.getUserDao().getUserByUsername(target);
+                if (user != null) {
+                    String email = (String) user.get("email");
+                    if (email != null && !email.isEmpty()) {
+                        ctx.getMailService().sendReviewResult(email, target, false,
+                                reason, ctx.getConfigManager().getLanguage());
+                    }
                 }
-            }
 
-            sender.sendMessage("§6[VerifyMC] §cUser " + target + " rejected.");
-        } else {
-            sender.sendMessage("§6[VerifyMC] §cFailed to reject user " + target);
-        }
+                sender.sendMessage("§6[VerifyMC] §cUser " + target + " rejected.");
+            } else {
+                sender.sendMessage("§6[VerifyMC] §cFailed to reject user " + target);
+            }
+        });
     }
 
     private void handleDelete(CommandSender sender, String[] args) {
@@ -168,14 +174,18 @@ public class VmcCommandExecutor implements CommandExecutor, TabCompleter {
             return;
         }
         String target = args[1];
-        boolean ok = ctx.getUserDao().deleteUser(target);
-        if (ok) {
-            org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist remove " + target);
-            ctx.getAuditDao().addAudit(new AuditRecord("delete", sender.getName(), target, "", System.currentTimeMillis()));
-            sender.sendMessage("§6[VerifyMC] §aUser " + target + " deleted.");
-        } else {
-            sender.sendMessage("§6[VerifyMC] §cFailed to delete user " + target);
-        }
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(ctx.getPlugin(), () -> {
+            boolean ok = ctx.getUserDao().deleteUser(target);
+            if (ok) {
+                org.bukkit.Bukkit.getScheduler().runTask(ctx.getPlugin(), () -> 
+                    org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist remove " + target)
+                );
+                ctx.getAuditDao().addAudit(new AuditRecord("delete", sender.getName(), target, "", System.currentTimeMillis()));
+                sender.sendMessage("§6[VerifyMC] §aUser " + target + " deleted.");
+            } else {
+                sender.sendMessage("§6[VerifyMC] §cFailed to delete user " + target);
+            }
+        });
     }
 
     private void handleBan(CommandSender sender, String[] args) {
@@ -189,14 +199,18 @@ public class VmcCommandExecutor implements CommandExecutor, TabCompleter {
         }
         String target = args[1];
         String reason = args.length > 2 ? String.join(" ", Arrays.copyOfRange(args, 2, args.length)) : "";
-        boolean ok = ctx.getUserDao().banUser(target);
-        if (ok) {
-            org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist remove " + target);
-            ctx.getAuditDao().addAudit(new AuditRecord("ban", sender.getName(), target, reason, System.currentTimeMillis()));
-            sender.sendMessage("§6[VerifyMC] §cUser " + target + " banned.");
-        } else {
-            sender.sendMessage("§6[VerifyMC] §cFailed to ban user " + target);
-        }
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(ctx.getPlugin(), () -> {
+            boolean ok = ctx.getUserDao().banUser(target);
+            if (ok) {
+                org.bukkit.Bukkit.getScheduler().runTask(ctx.getPlugin(), () -> 
+                    org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist remove " + target)
+                );
+                ctx.getAuditDao().addAudit(new AuditRecord("ban", sender.getName(), target, reason, System.currentTimeMillis()));
+                sender.sendMessage("§6[VerifyMC] §cUser " + target + " banned.");
+            } else {
+                sender.sendMessage("§6[VerifyMC] §cFailed to ban user " + target);
+            }
+        });
     }
 
     private void handleUnban(CommandSender sender, String[] args) {
@@ -209,14 +223,18 @@ public class VmcCommandExecutor implements CommandExecutor, TabCompleter {
             return;
         }
         String target = args[1];
-        boolean ok = ctx.getUserDao().unbanUser(target);
-        if (ok) {
-            org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist add " + target);
-            ctx.getAuditDao().addAudit(new AuditRecord("unban", sender.getName(), target, "", System.currentTimeMillis()));
-            sender.sendMessage("§6[VerifyMC] §aUser " + target + " unbanned.");
-        } else {
-            sender.sendMessage("§6[VerifyMC] §cFailed to unban user " + target);
-        }
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(ctx.getPlugin(), () -> {
+            boolean ok = ctx.getUserDao().unbanUser(target);
+            if (ok) {
+                org.bukkit.Bukkit.getScheduler().runTask(ctx.getPlugin(), () -> 
+                    org.bukkit.Bukkit.dispatchCommand(org.bukkit.Bukkit.getConsoleSender(), "whitelist add " + target)
+                );
+                ctx.getAuditDao().addAudit(new AuditRecord("unban", sender.getName(), target, "", System.currentTimeMillis()));
+                sender.sendMessage("§6[VerifyMC] §aUser " + target + " unbanned.");
+            } else {
+                sender.sendMessage("§6[VerifyMC] §cFailed to unban user " + target);
+            }
+        });
     }
 
     private void handleList(CommandSender sender, String[] args) {
@@ -225,23 +243,26 @@ public class VmcCommandExecutor implements CommandExecutor, TabCompleter {
             return;
         }
         String statusFilter = args.length > 1 ? args[1].toLowerCase() : "all";
-        List<Map<String, Object>> users;
-        if ("all".equals(statusFilter)) {
-            users = ctx.getUserDao().getAllUsers();
-        } else {
-            users = ctx.getUserDao().getUsersByStatus(statusFilter);
-        }
-
-        sender.sendMessage("§6[VerifyMC] §f--- Users (" + statusFilter + ") ---");
-        if (users.isEmpty()) {
-            sender.sendMessage("§7  No users found.");
-        } else {
-            for (Map<String, Object> user : users) {
-                String name = (String) user.getOrDefault("username", "?");
-                String status = (String) user.getOrDefault("status", "?");
-                sender.sendMessage("§7  " + name + " §f- §e" + status);
+        
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(ctx.getPlugin(), () -> {
+            List<Map<String, Object>> users;
+            if ("all".equals(statusFilter)) {
+                users = ctx.getUserDao().getAllUsers();
+            } else {
+                users = ctx.getUserDao().getUsersByStatus(statusFilter);
             }
-        }
+
+            sender.sendMessage("§6[VerifyMC] §f--- Users (" + statusFilter + ") ---");
+            if (users.isEmpty()) {
+                sender.sendMessage("§7  No users found.");
+            } else {
+                for (Map<String, Object> user : users) {
+                    String name = (String) user.getOrDefault("username", "?");
+                    String status = (String) user.getOrDefault("status", "?");
+                    sender.sendMessage("§7  " + name + " §f- §e" + status);
+                }
+            }
+        });
     }
 
     private void handleInfo(CommandSender sender, String[] args) {
@@ -254,16 +275,18 @@ public class VmcCommandExecutor implements CommandExecutor, TabCompleter {
             return;
         }
         String target = args[1];
-        Map<String, Object> user = ctx.getUserDao().getUserByUsername(target);
-        if (user == null) {
-            sender.sendMessage("§6[VerifyMC] §cUser not found: " + target);
-            return;
-        }
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(ctx.getPlugin(), () -> {
+            Map<String, Object> user = ctx.getUserDao().getUserByUsername(target);
+            if (user == null) {
+                sender.sendMessage("§6[VerifyMC] §cUser not found: " + target);
+                return;
+            }
 
-        sender.sendMessage("§6[VerifyMC] §f--- User Info ---");
-        sender.sendMessage("§7  Username: §f" + user.getOrDefault("username", "?"));
-        sender.sendMessage("§7  Email: §f" + user.getOrDefault("email", "?"));
-        sender.sendMessage("§7  Status: §e" + user.getOrDefault("status", "?"));
+            sender.sendMessage("§6[VerifyMC] §f--- User Info ---");
+            sender.sendMessage("§7  Username: §f" + user.getOrDefault("username", "?"));
+            sender.sendMessage("§7  Email: §f" + user.getOrDefault("email", "?"));
+            sender.sendMessage("§7  Status: §e" + user.getOrDefault("status", "?"));
+        });
     }
 
     private void handleVersion(CommandSender sender) {

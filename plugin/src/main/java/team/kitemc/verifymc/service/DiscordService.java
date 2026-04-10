@@ -85,28 +85,17 @@ public class DiscordService {
      */
     private void cleanupExpiredTokens() {
         long now = System.currentTimeMillis();
-        int statesCleaned = 0;
-        int tokensCleaned = 0;
+        int statesBefore = stateTokens.size();
+        int tokensBefore = tokenCache.size();
         
-        // Cleanup expired state tokens
-        Iterator<Map.Entry<String, StateData>> stateIterator = stateTokens.entrySet().iterator();
-        while (stateIterator.hasNext()) {
-            Map.Entry<String, StateData> entry = stateIterator.next();
-            if (entry.getValue().isExpired()) {
-                stateIterator.remove();
-                statesCleaned++;
-            }
-        }
+        // Cleanup expired state tokens using Java 8 removeIf
+        stateTokens.values().removeIf(StateData::isExpired);
         
-        // Cleanup expired token cache
-        Iterator<Map.Entry<String, TokenData>> tokenIterator = tokenCache.entrySet().iterator();
-        while (tokenIterator.hasNext()) {
-            Map.Entry<String, TokenData> entry = tokenIterator.next();
-            if (now - entry.getValue().cacheTime > TOKEN_CACHE_EXPIRY_MS) {
-                tokenIterator.remove();
-                tokensCleaned++;
-            }
-        }
+        // Cleanup expired token cache using Java 8 removeIf
+        tokenCache.values().removeIf(data -> (now - data.cacheTime) > TOKEN_CACHE_EXPIRY_MS);
+        
+        int statesCleaned = statesBefore - stateTokens.size();
+        int tokensCleaned = tokensBefore - tokenCache.size();
         
         if (statesCleaned > 0 || tokensCleaned > 0) {
             debugLog("Cleanup completed: " + statesCleaned + " state tokens, " + tokensCleaned + " cached tokens removed");

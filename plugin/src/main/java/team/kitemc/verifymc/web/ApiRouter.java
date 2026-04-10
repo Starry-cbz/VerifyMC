@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ApiRouter {
     private final PluginContext ctx;
     private final ConcurrentHashMap<String, RegistrationProcessingHandler.QuestionnaireSubmissionRecord> questionnaireSubmissionStore;
+    private org.bukkit.scheduler.BukkitTask cleanupTask;
 
     public ApiRouter(PluginContext ctx) {
         this.ctx = ctx;
@@ -26,21 +27,20 @@ public class ApiRouter {
     }
 
     private void startQuestionnaireCleanupTask() {
-        Thread cleanupThread = new Thread(() -> {
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    Thread.sleep(60000); // 1 minute
-                    long now = System.currentTimeMillis();
-                    questionnaireSubmissionStore.entrySet().removeIf(entry -> entry.getValue().expiresAt() < now);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        });
-        cleanupThread.setDaemon(true);
-        cleanupThread.setName("VerifyMC-QuestionnaireCleanup");
-        cleanupThread.start();
+        if (ctx.getPlugin() != null && ctx.getPlugin().isEnabled()) {
+            cleanupTask = org.bukkit.Bukkit.getScheduler().runTaskTimerAsynchronously(ctx.getPlugin(), () -> {
+                long now = System.currentTimeMillis();
+                questionnaireSubmissionStore.entrySet().removeIf(entry -> entry.getValue().expiresAt() < now);
+            }, 1200L, 1200L); // 1200 ticks = 60 seconds
+        }
+    }
+
+    public void stopQuestionnaireCleanupTask() {
+        if (cleanupTask != null) {
+            cleanupTask.cancel();
+            cleanupTask = null;
+        }
+        questionnaireSubmissionStore.clear();
     }
 
     /**

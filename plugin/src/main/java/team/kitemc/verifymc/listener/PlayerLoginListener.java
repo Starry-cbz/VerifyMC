@@ -4,7 +4,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerLoginEvent;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import team.kitemc.verifymc.core.PluginContext;
 
 import java.util.Map;
@@ -16,12 +16,11 @@ public class PlayerLoginListener implements Listener {
         this.ctx = ctx;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onPlayerLogin(PlayerLoginEvent event) {
-        Player player = event.getPlayer();
-        String username = player.getName();
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onAsyncPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
+        String username = event.getName();
 
-        ctx.debugLog("PlayerLogin: username=" + username);
+        ctx.debugLog("AsyncPlayerPreLogin: username=" + username);
 
         String whitelistMode = ctx.getConfigManager().getWhitelistMode();
         boolean isPluginMode = "plugin".equalsIgnoreCase(whitelistMode);
@@ -35,7 +34,7 @@ public class PlayerLoginListener implements Listener {
                 if (registerUrl != null && !registerUrl.isEmpty()) {
                     msg = msg.replace("{url}", registerUrl);
                 }
-                event.disallow(PlayerLoginEvent.Result.KICK_WHITELIST, msg);
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_WHITELIST, msg);
                 ctx.debugLog("User " + username + " not registered in plugin mode, kicking.");
             }
             return;
@@ -49,17 +48,17 @@ public class PlayerLoginListener implements Listener {
             }
             case "pending" -> {
                 String msg = ctx.getMessage("login.pending", ctx.getConfigManager().getLanguage());
-                event.disallow(PlayerLoginEvent.Result.KICK_OTHER, msg);
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, msg);
                 ctx.debugLog("User " + username + " is pending, kicking.");
             }
             case "rejected" -> {
                 String msg = ctx.getMessage("login.rejected", ctx.getConfigManager().getLanguage());
-                event.disallow(PlayerLoginEvent.Result.KICK_OTHER, msg);
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, msg);
                 ctx.debugLog("User " + username + " is rejected, kicking.");
             }
             case "banned" -> {
                 String msg = ctx.getMessage("login.banned", ctx.getConfigManager().getLanguage());
-                event.disallow(PlayerLoginEvent.Result.KICK_BANNED, msg);
+                event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_BANNED, msg);
                 ctx.debugLog("User " + username + " is banned, kicking.");
             }
             default -> {

@@ -44,7 +44,14 @@ public class RegistrationProcessingHandler implements HttpHandler {
     private final BiFunction<String, String, String> usernameNormalizer;
     private final Function<String, Boolean> emailValidator;
     private final Consumer<String> debugLogger;
-    private static final java.util.concurrent.ConcurrentHashMap<String, Object> emailLocks = new java.util.concurrent.ConcurrentHashMap<>();
+    
+    // Use an array of locks to prevent memory leak while maintaining concurrent registration safety (Lock Striping)
+    private static final Object[] emailLocks = new Object[256];
+    static {
+        for (int i = 0; i < emailLocks.length; i++) {
+            emailLocks[i] = new Object();
+        }
+    }
 
     public RegistrationProcessingHandler(
             Plugin plugin,
@@ -105,7 +112,8 @@ public class RegistrationProcessingHandler implements HttpHandler {
         }
         RegistrationRequest request = RegistrationRequest.fromJson(req, usernameNormalizer);
 
-        Object emailLock = emailLocks.computeIfAbsent(request.email().toLowerCase(), k -> new Object());
+        int hash = request.email().toLowerCase().hashCode();
+        Object emailLock = emailLocks[Math.abs(hash) % emailLocks.length];
         synchronized (emailLock) {
             try {
                 RegistrationValidationResult basicResult = validateBasicInput(request, requestId);
@@ -134,8 +142,7 @@ public class RegistrationProcessingHandler implements HttpHandler {
                 JSONObject response = executeRegistration(request, questionnaireSubmissionRecord, requestId);
                 WebResponseHelper.sendJson(exchange, response);
             } finally {
-                // Do not remove the lock from the map to prevent concurrent registration exploits
-                // emailLocks.remove(request.email().toLowerCase(), emailLock);
+                // Lock striping does not require removing locks from a map
             }
         }
     }

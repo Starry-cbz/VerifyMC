@@ -55,6 +55,12 @@ public class MysqlUserDao implements UserDao, AutoCloseable {
         return dataSource.getConnection();
     }
 
+    private boolean hasColumn(Connection conn, String columnName) throws SQLException {
+        try (ResultSet rs = conn.getMetaData().getColumns(null, null, "users", columnName)) {
+            return rs.next();
+        }
+    }
+
     private void initDatabase() throws SQLException {
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.executeUpdate("CREATE TABLE IF NOT EXISTS users (" +
@@ -69,43 +75,29 @@ public class MysqlUserDao implements UserDao, AutoCloseable {
                     "questionnaire_review_summary TEXT NULL," +
                     "questionnaire_scored_at BIGINT NULL)");
 
-            try {
-                stmt.executeQuery("SELECT password FROM users LIMIT 1");
-            } catch (SQLException e) {
+            if (!hasColumn(conn, "password")) {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN password VARCHAR(255)");
             }
 
-            try {
-                stmt.executeQuery("SELECT regTime FROM users LIMIT 1");
-            } catch (SQLException e) {
+            if (!hasColumn(conn, "regTime")) {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN regTime BIGINT");
                 stmt.executeUpdate("UPDATE users SET regTime = " + System.currentTimeMillis() + " WHERE regTime IS NULL");
             }
 
-            try {
-                stmt.executeQuery("SELECT discord_id FROM users LIMIT 1");
-            } catch (SQLException e) {
+            if (!hasColumn(conn, "discord_id")) {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN discord_id VARCHAR(64)");
             }
 
-            try {
-                stmt.executeQuery("SELECT questionnaire_score FROM users LIMIT 1");
-            } catch (SQLException e) {
+            if (!hasColumn(conn, "questionnaire_score")) {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN questionnaire_score INT NULL");
             }
-            try {
-                stmt.executeQuery("SELECT questionnaire_passed FROM users LIMIT 1");
-            } catch (SQLException e) {
+            if (!hasColumn(conn, "questionnaire_passed")) {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN questionnaire_passed BOOLEAN NULL");
             }
-            try {
-                stmt.executeQuery("SELECT questionnaire_review_summary FROM users LIMIT 1");
-            } catch (SQLException e) {
+            if (!hasColumn(conn, "questionnaire_review_summary")) {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN questionnaire_review_summary TEXT NULL");
             }
-            try {
-                stmt.executeQuery("SELECT questionnaire_scored_at FROM users LIMIT 1");
-            } catch (SQLException e) {
+            if (!hasColumn(conn, "questionnaire_scored_at")) {
                 stmt.executeUpdate("ALTER TABLE users ADD COLUMN questionnaire_scored_at BIGINT NULL");
             }
 

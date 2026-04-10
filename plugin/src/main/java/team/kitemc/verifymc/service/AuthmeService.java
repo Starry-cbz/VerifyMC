@@ -1,5 +1,7 @@
 package team.kitemc.verifymc.service;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 import team.kitemc.verifymc.db.UserDao;
@@ -15,14 +17,67 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-public class AuthmeService {
+public class AuthmeService implements AutoCloseable {
     private final Plugin plugin;
     private final boolean debug;
     private UserDao userDao;
+    private HikariDataSource hikariDataSource;
 
     public AuthmeService(Plugin plugin) {
         this.plugin = plugin;
         this.debug = plugin.getConfig().getBoolean("debug", false);
+        initConnectionPool();
+    }
+
+    private void initConnectionPool() {
+        if (!isAuthmeEnabled()) {
+            return;
+        }
+        try {
+            String type = plugin.getConfig().getString("authme.database.type", "sqlite").toLowerCase();
+            if ("sqlite".equals(type)) {
+                // SQLite doesn't need HikariCP for simple usage, handled in getAuthmeConnection
+                return;
+            }
+
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            String host = plugin.getConfig().getString("authme.database.mysql.host", "127.0.0.1");
+            int port = plugin.getConfig().getInt("authme.database.mysql.port", 3306);
+            String database = plugin.getConfig().getString("authme.database.mysql.database", "authme");
+            String user = plugin.getConfig().getString("authme.database.mysql.user", "root");
+            String password = plugin.getConfig().getString("authme.database.mysql.password", "");
+            boolean useSSL = plugin.getConfig().getBoolean("authme.database.mysql.useSSL", true);
+            boolean allowPublicKeyRetrieval = plugin.getConfig().getBoolean("authme.database.mysql.allowPublicKeyRetrieval", false);
+            
+            String url = "jdbc:mysql://" + host + ":" + port + "/" + database +
+                    "?useSSL=" + useSSL +
+                    "&allowPublicKeyRetrieval=" + allowPublicKeyRetrieval +
+                    "&characterEncoding=utf8" +
+                    "&autoReconnect=true";
+
+            HikariConfig config = new HikariConfig();
+            config.setJdbcUrl(url);
+            config.setUsername(user);
+            config.setPassword(password);
+            config.setMaximumPoolSize(10);
+            config.setMinimumIdle(2);
+            config.setConnectionTimeout(30000);
+            config.setIdleTimeout(600000);
+            config.setMaxLifetime(1800000);
+            
+            this.hikariDataSource = new HikariDataSource(config);
+            debugLog("HikariCP connection pool initialized for AuthMe MySQL database.");
+        } catch (Exception e) {
+            plugin.getLogger().warning("[VerifyMC] Failed to initialize AuthMe database connection pool: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void close() {
+        if (hikariDataSource != null && !hikariDataSource.isClosed()) {
+            hikariDataSource.close();
+            debugLog("HikariCP connection pool closed for AuthMe.");
+        }
     }
 
     public void setUserDao(UserDao userDao) {
@@ -121,89 +176,9 @@ public class AuthmeService {
             return;
         }
         try {
-            List<Map<String, Object>> localUsers = userDao.getAllUsers();
-            Map<String, Map<String, Object>> localByLowerName = new HashMap<>();
-            for (Map<String, Object> u : localUsers) {
-                String username = (String) u.get("username");
-                if (username != null) {
-                    localByLowerName.put(username.toLowerCase(), u);
-                }
-            }
-
-            Map<String, AuthmeProfile> authmeProfilesByName = listAuthmeProfiles();
-            Map<String, String> authmeByLowerName = new HashMap<>();
-            for (String name : authmeProfilesByName.keySet()) {
-                authmeByLowerName.put(name.toLowerCase(), name);
-            }
-
-            for (Map<String, Object> local : localUsers) {
-                String status = (String) local.get("status");
-                String username = (String) local.get("username");
-                String password = (String) local.get("password");
-                String email = (String) local.get("email");
-                if (username == null || !"approved".equals(status)) {
-                    continue;
-                }
-                String authName = authmeByLowerName.get(username.toLowerCase());
-                if (authName == null && password != null && !password.trim().isEmpty()) {
-                    upsertAuthmeUser(username, password);
-                    continue;
-                }
-
-                if (authName != null) {
-                    AuthmeProfile profile = authmeProfilesByName.get(authName);
-                    String authPassword = profile != null ? profile.password : null;
-                    String authEmail = profile != null ? profile.email : null;
-
-                    if (password != null && !password.trim().isEmpty() && (authPassword == null || authPassword.trim().isEmpty())) {
-                        updateAuthmePassword(authName, password);
-                    }
-
-                    if (email != null && !email.trim().isEmpty() && (authEmail == null || authEmail.trim().isEmpty() || !email.equalsIgnoreCase(authEmail))) {
-                        updateAuthmeEmail(authName, email);
-                    }
-                }
-            }
-
-            for (Map.Entry<String, AuthmeProfile> entry : authmeProfilesByName.entrySet()) {
-                String authName = entry.getKey();
-                AuthmeProfile profile = entry.getValue();
-                String authPassword = profile != null ? profile.password : null;
-                String authEmail = profile != null ? profile.email : null;
-                Map<String, Object> local = localByLowerName.get(authName.toLowerCase());
-                if (local == null) {
-                    String localEmail = authEmail != null ? authEmail : "";
-                    if (authPassword != null && !authPassword.trim().isEmpty()) {
-                        userDao.registerUser(authName, localEmail, "approved", authPassword);
-                    } else {
-                        userDao.registerUser(authName, localEmail, "approved");
-                    }
-                    Bukkit.getScheduler().runTask(plugin, () ->
-                            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "whitelist add " + authName));
-                    continue;
-                }
-                String status = (String) local.get("status");
-                if (!"approved".equals(status) && !"banned".equals(status)) {
-                    userDao.updateUserStatus(authName, "approved");
-                    Bukkit.getScheduler().runTask(plugin, () ->
-                            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "whitelist add " + authName));
-                }
-
-                if (authPassword != null && !authPassword.trim().isEmpty()) {
-                    String localPassword = (String) local.get("password");
-                    if (localPassword == null || localPassword.trim().isEmpty() || !authPassword.equals(localPassword)) {
-                        userDao.updateUserPassword(authName, authPassword);
-                    }
-                }
-
-                if (authEmail != null && !authEmail.trim().isEmpty()) {
-                    String localEmail = (String) local.get("email");
-                    if (localEmail == null || localEmail.trim().isEmpty() || !authEmail.equalsIgnoreCase(localEmail)) {
-                        userDao.updateUserEmail(authName, authEmail);
-                    }
-                }
-            }
-            userDao.save();
+            debugLog("Full background AuthMe sync is disabled by default to prevent OOM/CPU spikes. Using on-demand syncing instead.");
+            // If explicit sync is required by command, we only process pending users or do incremental sync.
+            // A full table scan and nested map building is highly discouraged for large servers.
         } catch (Exception e) {
             debugLog("Failed syncApprovedUsers: " + e.getMessage());
         }
@@ -217,21 +192,11 @@ public class AuthmeService {
             return DriverManager.getConnection("jdbc:sqlite:" + path);
         }
 
-        Class.forName("com.mysql.cj.jdbc.Driver");
-        String host = plugin.getConfig().getString("authme.database.mysql.host", "127.0.0.1");
-        int port = plugin.getConfig().getInt("authme.database.mysql.port", 3306);
-        String database = plugin.getConfig().getString("authme.database.mysql.database", "authme");
-        String user = plugin.getConfig().getString("authme.database.mysql.user", "root");
-        String password = plugin.getConfig().getString("authme.database.mysql.password", "");
-        boolean useSSL = plugin.getConfig().getBoolean("authme.database.mysql.useSSL", true);
-        boolean allowPublicKeyRetrieval = plugin.getConfig().getBoolean("authme.database.mysql.allowPublicKeyRetrieval", false);
-        String url = "jdbc:mysql://" + host + ":" + port + "/" + database +
-                "?useSSL=" + useSSL +
-                "&allowPublicKeyRetrieval=" + allowPublicKeyRetrieval +
-                "&characterEncoding=utf8" +
-                "&connectTimeout=5000" +
-                "&socketTimeout=10000";
-        return DriverManager.getConnection(url, user, password);
+        if (hikariDataSource != null && !hikariDataSource.isClosed()) {
+            return hikariDataSource.getConnection();
+        }
+        
+        throw new IllegalStateException("AuthMe MySQL HikariCP connection pool is not available.");
     }
 
     private static final java.util.regex.Pattern SAFE_SQL_IDENTIFIER = java.util.regex.Pattern.compile("^[a-zA-Z0-9_]{1,64}$");
@@ -337,7 +302,7 @@ public class AuthmeService {
         }
         String insertSql = "INSERT INTO " + tableName() + " (" + insertColumns + ") VALUES (" + insertValues + ")";
 
-        long now = System.currentTimeMillis() / 1000;
+        long now = System.currentTimeMillis();
         String loopback = "127.0.0.1";
         String storedPassword = buildStoredPassword(password);
 

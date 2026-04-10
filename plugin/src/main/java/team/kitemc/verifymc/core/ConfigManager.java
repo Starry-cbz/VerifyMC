@@ -78,6 +78,7 @@ public class ConfigManager {
 
     public void reloadConfig() {
         plugin.reloadConfig();
+        validateConfig();
     }
 
     // --- General config ---
@@ -190,7 +191,7 @@ public class ConfigManager {
     }
 
     public String getAuthmePasswordRegex() {
-        return getConfig().getString("authme.password_regex", "^[a-zA-Z0-9_]{8,26}$");
+        return getConfig().getString("authme.password_regex", "^[\\x21-\\x7E]{6,32}$");
     }
 
     public int getAuthmeSyncInterval() {

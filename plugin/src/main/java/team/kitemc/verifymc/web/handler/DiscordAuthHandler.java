@@ -43,6 +43,28 @@ public class DiscordAuthHandler implements HttpHandler {
             return;
         }
 
+        // Prevent OAuth CSRF: If the user is already registered, require authentication to bind Discord
+        java.util.Map<String, Object> user = ctx.getUserDao().getUserByUsername(username);
+        if (user != null) {
+            String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
+            boolean isAuth = false;
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7);
+                String tokenUser = ctx.getWebAuthHelper().getUsername(token);
+                if (tokenUser != null && tokenUser.equalsIgnoreCase(username)) {
+                    isAuth = true;
+                }
+            }
+            
+            if (!isAuth) {
+                JSONObject resp = new JSONObject()
+                        .put("success", false)
+                        .put("message", ctx.getMessage("login.not_authorized", language));
+                WebResponseHelper.sendJson(exchange, resp, 401);
+                return;
+            }
+        }
+
         String authUrl = ctx.getDiscordService().getAuthorizationUrl(username);
         JSONObject resp = new JSONObject();
         resp.put("success", true);

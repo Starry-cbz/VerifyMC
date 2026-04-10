@@ -51,6 +51,9 @@ public class WebServer {
             server.stop(0);
             ctx.getPlugin().getLogger().info("[VerifyMC] Web server stopped.");
         }
+        if (router != null) {
+            router.stopQuestionnaireCleanupTask();
+        }
     }
 
     /**

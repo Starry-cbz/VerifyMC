@@ -150,10 +150,9 @@ public class VerifyMC extends JavaPlugin {
             }
         } catch (SQLException e) {
             log.severe("[VerifyMC] Database initialization failed: " + e.getMessage());
-            log.info("[VerifyMC] Falling back to file storage.");
-            File dataDir = getDataFolder();
-            context.setUserDao(new FileUserDao(new File(dataDir, "users.json"), this));
-            context.setAuditDao(new FileAuditDao(new File(dataDir, "audits.json")));
+            log.severe("[VerifyMC] FAILED TO START: MySQL was configured but could not be reached. To prevent data corruption, the plugin will now disable itself.");
+            getServer().getPluginManager().disablePlugin(this);
+            throw new RuntimeException("Database initialization failed", e);
         }
     }
 
